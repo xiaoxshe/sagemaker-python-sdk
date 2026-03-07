@@ -59,12 +59,19 @@ class _RFTModelWrapper:
             setattr(self._inner, name, value)
 
     def stream(self, *args: Any, **kwargs: Any) -> Any:
-        """Intercept stream() to inject RFT headers via extra_headers kwarg."""
+        """Intercept stream() to inject RFT headers via client_args default_headers.
+
+        The OpenAI AsyncOpenAI client supports ``default_headers`` in its constructor,
+        which are sent with every request. We inject the RFT headers there since
+        Strands OpenAIModel creates a new client per request from ``client_args``.
+        """
         rft_headers = RFTContext.get_headers()
         if rft_headers:
-            existing = kwargs.get("extra_headers") or {}
-            existing.update(rft_headers)
-            kwargs["extra_headers"] = existing
+            client_args = getattr(self._inner, "client_args", None)
+            if client_args is not None:
+                existing = client_args.get("default_headers") or {}
+                existing.update(rft_headers)
+                client_args["default_headers"] = existing
             logger.debug("Injected RFT headers: %s", list(rft_headers.keys()))
         return self._inner.stream(*args, **kwargs)
 

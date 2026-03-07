@@ -1,14 +1,17 @@
-"""Thread-local context for RFT rollout metadata.
+"""Context for RFT rollout metadata.
 
 The rft_handler decorator populates this context from the payload metadata.
 The Strands model wrapper reads it to inject per-request headers.
+
+Uses ``contextvars.ContextVar`` so that context is automatically propagated
+when Strands ``run_async`` copies the context into a worker thread.
 """
 
-import threading
+import contextvars
 import uuid
 from typing import Optional
 
-_context = threading.local()
+_context: contextvars.ContextVar[Optional[dict]] = contextvars.ContextVar("_rft_metadata", default=None)
 
 
 class RFTContext:
@@ -29,7 +32,7 @@ class RFTContext:
         A new ``X-Span-Id`` is generated on every call so each inference
         turn gets a unique span within the trajectory.
         """
-        metadata = getattr(_context, "metadata", None)
+        metadata = _context.get()
         if metadata is None:
             return {}
         headers = {}
@@ -44,12 +47,12 @@ class RFTContext:
     @staticmethod
     def get_metadata() -> Optional[dict]:
         """Return the raw metadata dict, or None if not in an RFT context."""
-        return getattr(_context, "metadata", None)
+        return _context.get()
 
 
 def _set_metadata(metadata: dict):
-    _context.metadata = metadata
+    _context.set(metadata)
 
 
 def _clear_metadata():
-    _context.metadata = None
+    _context.set(None)
